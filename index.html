@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Used Car Price Predictor</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.min.js"></script>
+  <script src="./index.js" defer></script>
+
+  <style>
+      body {
+          box-sizing: border-box;
+          max-width: 720px;
+          margin: 0 auto;
+          padding: 16px;
+          background: #fff;
+          color: #1f2328;
+          font-family: Arial, Helvetica, sans-serif;
+      }
+      table, th, td {
+          border: 1px solid #1f2328;
+          border-collapse: collapse;
+          padding: 5px;
+      }
+      table {
+          width: 100%;
+      }
+      th {
+          text-align: left;
+      }
+      h1 {
+          color: green;
+          text-align: center;
+      }
+      .input-group {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 10px;
+      }
+      .input-group label {
+          flex: 0 0 120px;
+      }
+      .input-group select,
+      .input-group input {
+          box-sizing: border-box;
+          flex: 1 1 auto;
+          min-width: 0;
+          width: 100%;
+          padding: 5px;
+          font-size: 16px;
+      }
+      .actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 10px;
+      }
+      .actions input {
+          padding: 10px;
+          font-size: 16px;
+      }
+      #predictButton {
+          background-color: yellow;
+      }
+      #status {
+          min-height: 1.4em;
+          margin-top: 10px;
+      }
+      #status.error {
+          color: #b00020;
+      }
+      .price {
+          color: green;
+          font-weight: bold;
+      }
+      .note {
+          font-size: 14px;
+      }
+      @media (max-width: 480px) {
+          .input-group {
+              display: block;
+          }
+          .input-group label {
+              display: block;
+              margin-bottom: 4px;
+          }
+      }
+  </style>
+</head>
+<body>
+
+  <h1>Used Car Price Predictor</h1>
+
+  <div id="boxes1">
+      <div class="input-group">
+          <label for="f_brand">Brand:</label>
+          <select id="f_brand"></select>
+      </div>
+
+      <div class="input-group">
+          <label for="f_model">Model:</label>
+          <select id="f_model"></select>
+      </div>
+
+      <div class="input-group">
+          <label for="f_year">Model Year:</label>
+          <input type="number" id="f_year" step="1" value="2018">
+      </div>
+
+      <div class="input-group">
+          <label for="f_mileage">Mileage:</label>
+          <input type="number" id="f_mileage" min="0" step="1" value="45000">
+      </div>
+
+      <div class="input-group">
+          <label for="f_fuel">Fuel Type:</label>
+          <select id="f_fuel"></select>
+      </div>
+
+      <div class="input-group">
+          <label for="f_engine">Engine:</label>
+          <select id="f_engine"></select>
+      </div>
+
+      <div class="input-group">
+          <label for="f_transmission">Transmission:</label>
+          <select id="f_transmission"></select>
+      </div>
+
+      <div class="input-group">
+          <label for="f_ext_color">Exterior Color:</label>
+          <select id="f_ext_color"></select>
+      </div>
+
+      <div class="input-group">
+          <label for="f_int_color">Interior Color:</label>
+          <select id="f_int_color"></select>
+      </div>
+
+      <div class="input-group">
+          <label for="f_accident">Accident History:</label>
+          <select id="f_accident"></select>
+      </div>
+  </div>
+
+  <div class="actions">
+      <input id="predictButton" type="button" value="Predict Price" onclick="runExample()" disabled>
+      <input id="testCarButton" type="button" value="Try a Test Car" onclick="tryTestCar()" disabled>
+  </div>
+
+  <div id="status" role="status">Loading the models...</div>
+
+  <div id="boxes2">
+      <h2>Inference</h2>
+      <div id="predictions"></div>
+  </div>
+
+  <p class="note">
+      Both models were trained on used car listings with clean titles. On held-out test cars,
+      their typical error was about 23% of the listed price. These are estimates, not appraisals.
+  </p>
+
+</body>
+</html>
