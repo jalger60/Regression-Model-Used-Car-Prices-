@@ -1,6 +1,7 @@
-const NEURAL_NET_MODEL = "https://raw.githubusercontent.com/jalger60/Regression-Model-Used-Car-Prices/main/used_car_prices.onnx";
-const XGBOOST_MODEL = "https://raw.githubusercontent.com/jalger60/Regression-Model-Used-Car-Prices/main/xgboost_used_car_prices.onnx";
-const PAGE_DATA = "https://raw.githubusercontent.com/jalger60/Regression-Model-Used-Car-Prices/main/used_car_page_data.json";
+const NEURAL_NET_MODEL = "./used_car_prices.onnx";
+const NEURAL_NET_WEIGHTS = "./used_car_prices.onnx.data";
+const XGBOOST_MODEL = "./xgboost_used_car_prices.onnx";
+const PAGE_DATA = "./used_car_page_data.json";
 
 let pageData;
 let neuralNetSession;
@@ -226,6 +227,21 @@ async function tryTestCar() {
     await runExample();
 }
 
+// Loads the model file, plus its weights file if the export created one
+async function loadNeuralNet() {
+    const options = { executionProviders: ["wasm"] };
+    const weights = await fetch(NEURAL_NET_WEIGHTS, { method: "HEAD" });
+
+    if (weights.ok) {
+        options.externalData = [{
+            path: NEURAL_NET_WEIGHTS.replace("./", ""),
+            data: NEURAL_NET_WEIGHTS
+        }];
+    }
+
+    return ort.InferenceSession.create(NEURAL_NET_MODEL, options);
+}
+
 async function loadPage() {
     try {
         if (typeof ort === "undefined") {
@@ -240,17 +256,15 @@ async function loadPage() {
         pageData = await response.json();
         setupForm();
 
-        [neuralNetSession, xgboostSession] = await Promise.all([
-            ort.InferenceSession.create(NEURAL_NET_MODEL, { executionProviders: ["wasm"] }),
-            ort.InferenceSession.create(XGBOOST_MODEL, { executionProviders: ["wasm"] })
-        ]);
+        neuralNetSession = await loadNeuralNet();
+        xgboostSession = await ort.InferenceSession.create(XGBOOST_MODEL, { executionProviders: ["wasm"] });
 
         document.getElementById("predictButton").disabled = false;
         document.getElementById("testCarButton").disabled = false;
         setStatus("");
     } catch (error) {
         console.error(error);
-        setStatus("The page could not load the models. Open it from GitHub Pages or a local web server.", true);
+        setStatus(`The page could not load the models. ${error.message}`, true);
     }
 }
 
