@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Used Car Price Predictor</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxjs@0.1.8/dist/onnx.min.js"></script>
   <script src="./index.js" defer></script>
 
   <style>
@@ -64,11 +64,7 @@
       #predictButton {
           background-color: yellow;
       }
-      #status {
-          min-height: 1.4em;
-          margin-top: 10px;
-      }
-      #status.error {
+      .error {
           color: #b00020;
       }
       .price {
@@ -95,62 +91,59 @@
 
   <div id="boxes1">
       <div class="input-group">
-          <label for="f_brand">Brand:</label>
-          <select id="f_brand"></select>
+          <label for="box1">Brand:</label>
+          <select id="box1"></select>
       </div>
 
       <div class="input-group">
-          <label for="f_model">Model:</label>
-          <select id="f_model"></select>
+          <label for="box2">Model:</label>
+          <select id="box2"></select>
       </div>
 
       <div class="input-group">
-          <label for="f_year">Model Year:</label>
-          <input type="number" id="f_year" step="1" value="2018">
+          <label for="box3">Model Year:</label>
+          <input type="number" id="box3" step="1" value="2018">
       </div>
 
       <div class="input-group">
-          <label for="f_mileage">Mileage:</label>
-          <input type="number" id="f_mileage" min="0" step="1" value="45000">
+          <label for="box4">Mileage:</label>
+          <input type="number" id="box4" min="0" step="1" value="45000">
       </div>
 
       <div class="input-group">
-          <label for="f_fuel">Fuel Type:</label>
-          <select id="f_fuel"></select>
+          <label for="box5">Fuel Type:</label>
+          <select id="box5"></select>
       </div>
 
       <div class="input-group">
-          <label for="f_engine">Engine:</label>
-          <select id="f_engine"></select>
+          <label for="box6">Engine:</label>
+          <select id="box6"></select>
       </div>
 
       <div class="input-group">
-          <label for="f_transmission">Transmission:</label>
-          <select id="f_transmission"></select>
+          <label for="box7">Transmission:</label>
+          <select id="box7"></select>
       </div>
 
       <div class="input-group">
-          <label for="f_ext_color">Exterior Color:</label>
-          <select id="f_ext_color"></select>
+          <label for="box8">Exterior Color:</label>
+          <select id="box8"></select>
       </div>
 
       <div class="input-group">
-          <label for="f_int_color">Interior Color:</label>
-          <select id="f_int_color"></select>
+          <label for="box9">Interior Color:</label>
+          <select id="box9"></select>
       </div>
 
       <div class="input-group">
-          <label for="f_accident">Accident History:</label>
-          <select id="f_accident"></select>
+          <label for="box10">Accident History:</label>
+          <select id="box10"></select>
       </div>
   </div>
 
   <div class="actions">
       <input id="predictButton" type="button" value="Predict Price" onclick="runExample()" disabled>
-      <input id="testCarButton" type="button" value="Try a Test Car" onclick="tryTestCar()" disabled>
   </div>
-
-  <div id="status" role="status">Loading the models...</div>
 
   <div id="boxes2">
       <h2>Inference</h2>
@@ -158,8 +151,8 @@
   </div>
 
   <p class="note">
-      Both models were trained on used car listings with clean titles. On held-out test cars,
-      their typical error was about 23% of the listed price. These are estimates, not appraisals.
+      This neural network was trained on used car listings with clean titles. On held-out test cars,
+      its typical error was about 23% of the listed price. This is an estimate, not an appraisal.
   </p>
 
 </body>
