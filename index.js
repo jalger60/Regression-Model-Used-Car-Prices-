@@ -1,5 +1,5 @@
-const NEURAL_NET_MODEL = "./used_car_prices.onnx";
-const XGBOOST_MODEL = "./xgboost_used_car_prices.onnx";
+const NEURAL_NET_MODEL = "used_car_prices.onnx";
+const XGBOOST_MODEL = "xgboost_used_car_prices.onnx";
 const PAGE_DATA = "./used_car_page_data.json";
 
 let pageData;
