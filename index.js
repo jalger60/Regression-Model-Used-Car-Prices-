@@ -1,5 +1,5 @@
-const NEURAL_NET_MODEL = "used_car_prices.onnx";
-const XGBOOST_MODEL = "xgboost_used_car_prices.onnx";
+const NEURAL_NET_MODEL = "./used_car_prices.onnx";
+const XGBOOST_MODEL = "./xgboost_used_car_prices.onnx";
 const PAGE_DATA = "./used_car_page_data.json";
 
 let pageData;
@@ -226,11 +226,27 @@ async function tryTestCar() {
     await runExample();
 }
 
+async function loadModel(path) {
+    const response = await fetch(path);
+    if (!response.ok) {
+        throw new Error(`Could not load ${path} (HTTP ${response.status}).`);
+    }
+
+    const modelBytes = new Uint8Array(await response.arrayBuffer());
+
+    try {
+        return await ort.InferenceSession.create(modelBytes, { executionProviders: ["wasm"] });
+    } catch (error) {
+        throw new Error(`Could not start ${path}: ${error.message}`);
+    }
+}
+
 async function loadPage() {
     try {
         if (typeof ort === "undefined") {
-            throw new Error("ONNX Runtime did not load.");
+            throw new Error("Could not load ./ort/ort.wasm.min.js.");
         }
+        ort.env.wasm.wasmPaths = new URL("./ort/", window.location.href).href;
         ort.env.wasm.numThreads = 1;
 
         const response = await fetch(PAGE_DATA);
@@ -240,17 +256,15 @@ async function loadPage() {
         pageData = await response.json();
         setupForm();
 
-        [neuralNetSession, xgboostSession] = await Promise.all([
-            ort.InferenceSession.create(NEURAL_NET_MODEL, { executionProviders: ["wasm"] }),
-            ort.InferenceSession.create(XGBOOST_MODEL, { executionProviders: ["wasm"] })
-        ]);
+        neuralNetSession = await loadModel(NEURAL_NET_MODEL);
+        xgboostSession = await loadModel(XGBOOST_MODEL);
 
         document.getElementById("predictButton").disabled = false;
         document.getElementById("testCarButton").disabled = false;
         setStatus("");
     } catch (error) {
         console.error(error);
-        setStatus("The page could not load the models. Open it from GitHub Pages or a local web server.", true);
+        setStatus(`The page could not load the models. ${error.message}`, true);
     }
 }
 
