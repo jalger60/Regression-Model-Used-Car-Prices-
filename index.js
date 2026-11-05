@@ -1,6 +1,6 @@
-const NEURAL_NET_MODEL = "./used_car_prices.onnx";
-const XGBOOST_MODEL = "./xgboost_used_car_prices.onnx";
-const PAGE_DATA = "./used_car_page_data.json";
+const NEURAL_NET_MODEL = "https://raw.githubusercontent.com/jalger60/Regression-Model-Used-Car-Prices/main/used_car_prices.onnx";
+const XGBOOST_MODEL = "https://raw.githubusercontent.com/jalger60/Regression-Model-Used-Car-Prices/main/xgboost_used_car_prices.onnx";
+const PAGE_DATA = "https://raw.githubusercontent.com/jalger60/Regression-Model-Used-Car-Prices/main/used_car_page_data.json";
 
 let pageData;
 let neuralNetSession;
