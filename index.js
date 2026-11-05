@@ -1,140 +1,257 @@
+const NEURAL_NET_MODEL = "./used_car_prices.onnx";
+const XGBOOST_MODEL = "./xgboost_used_car_prices.onnx";
+const PAGE_DATA = "./used_car_page_data.json";
+
 let pageData;
+let neuralNetSession;
+let xgboostSession;
 
-function fillBox(id, values) {
-    let box = document.getElementById(id);
-    box.replaceChildren();
+// Set by "Try a Test Car", and cleared when the form changes
+let activeTestCar = null;
 
-    for (let value of values) {
-        box.add(new Option(value === "–" ? "Not listed" : value, value));
+const fields = {
+    brand: document.getElementById("f_brand"),
+    model: document.getElementById("f_model"),
+    model_year: document.getElementById("f_year"),
+    milage: document.getElementById("f_mileage"),
+    fuel_type: document.getElementById("f_fuel"),
+    engine: document.getElementById("f_engine"),
+    transmission: document.getElementById("f_transmission"),
+    ext_col: document.getElementById("f_ext_color"),
+    int_col: document.getElementById("f_int_color"),
+    accident: document.getElementById("f_accident")
+};
+
+function setStatus(message, isError = false) {
+    const status = document.getElementById("status");
+    status.textContent = message;
+    status.classList.toggle("error", isError);
+}
+
+function setOptions(select, values) {
+    select.replaceChildren(...values.map((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value === "–" ? "Not listed" : value;
+        return option;
+    }));
+}
+
+function updateModelOptions() {
+    setOptions(fields.model, Object.keys(pageData.catalog[fields.brand.value]));
+    updateCarOptions();
+}
+
+function updateCarOptions() {
+    const choices = pageData.catalog[fields.brand.value][fields.model.value];
+    setOptions(fields.fuel_type, choices.fuel_type);
+    setOptions(fields.engine, choices.engine);
+    setOptions(fields.transmission, choices.transmission);
+}
+
+function clearResult() {
+    activeTestCar = null;
+    document.getElementById("predictions").replaceChildren();
+    setStatus("");
+}
+
+function setupForm() {
+    setOptions(fields.brand, Object.keys(pageData.catalog));
+    setOptions(fields.ext_col, pageData.options.ext_col);
+    setOptions(fields.int_col, pageData.options.int_col);
+    setOptions(fields.accident, pageData.options.accident);
+
+    if ("Toyota" in pageData.catalog) {
+        fields.brand.value = "Toyota";
     }
-}
+    updateModelOptions();
 
-function updateModels() {
-    let brand = document.getElementById('box1').value;
-    fillBox('box2', Object.keys(pageData.catalog[brand]));
-    updateCarChoices();
-}
+    fields.brand.addEventListener("change", updateModelOptions);
+    fields.model.addEventListener("change", updateCarOptions);
 
-function updateCarChoices() {
-    let brand = document.getElementById('box1').value;
-    let model = document.getElementById('box2').value;
-    let choices = pageData.catalog[brand][model];
-
-    fillBox('box5', choices.fuel_type);
-    fillBox('box6', choices.engine);
-    fillBox('box7', choices.transmission);
-}
-
-// Builds the same 265 inputs as the notebook's preprocessor
-function encodeCar(car) {
-    let x = new Float32Array(pageData.input_dim);
-
-    car.age = pageData.age_reference_year - car.model_year;
-
-    pageData.num_cols.forEach((column, index) => {
-        x[index] = car[column];
+    Object.values(fields).forEach((field) => {
+        field.addEventListener("change", clearResult);
     });
 
-    for (let [column, rule] of Object.entries(pageData.encoding)) {
-        let position = rule.categories.indexOf(car[column]);
+    const [minYear, maxYear] = pageData.year_range;
+    fields.model_year.min = minYear;
+    fields.model_year.max = maxYear;
+    fields.milage.max = pageData.max_mileage;
+}
+
+function readCar() {
+    return {
+        brand: fields.brand.value,
+        model: fields.model.value,
+        model_year: Number(fields.model_year.value),
+        milage: Number(fields.milage.value),
+        fuel_type: fields.fuel_type.value,
+        engine: fields.engine.value,
+        transmission: fields.transmission.value,
+        ext_col: fields.ext_col.value,
+        int_col: fields.int_col.value,
+        accident: fields.accident.value
+    };
+}
+
+function validateCar(car) {
+    const [minYear, maxYear] = pageData.year_range;
+
+    if (fields.model_year.value === "" || !Number.isInteger(car.model_year)
+        || car.model_year < minYear || car.model_year > maxYear) {
+        return `Enter a model year from ${minYear} to ${maxYear}.`;
+    }
+    if (fields.milage.value === "" || !Number.isFinite(car.milage)
+        || car.milage < 0 || car.milage > pageData.max_mileage) {
+        return `Enter a mileage from 0 to ${pageData.max_mileage.toLocaleString("en-US")}.`;
+    }
+    return "";
+}
+
+// Builds the same inputs as the notebook's `preprocessor`
+function encodeCar(car) {
+    const x = new Float32Array(pageData.input_dim);
+    const numbers = {
+        model_year: car.model_year,
+        milage: car.milage,
+        age: pageData.age_reference_year - car.model_year
+    };
+
+    pageData.num_cols.forEach((column, index) => {
+        x[index] = numbers[column];
+    });
+
+    Object.entries(pageData.encoding).forEach(([column, rule]) => {
+        const position = rule.categories.indexOf(car[column]);
 
         if (position >= 0) {
             x[rule.start + position] = 1;
         } else if (rule.infrequent) {
+            // The infrequent column comes right after the listed categories
             x[rule.start + rule.categories.length] = 1;
         }
-    }
+    });
 
     return x;
 }
 
-function showError(message) {
-    let error = document.createElement('p');
-    error.className = 'error';
-    error.textContent = message;
-    document.getElementById('predictions').replaceChildren(error);
+async function predictPrice(session, x) {
+    const tensorX = new ort.Tensor("float32", x, [1, x.length]);
+    const outputMap = await session.run({ [session.inputNames[0]]: tensorX });
+    const logPrice = outputMap[session.outputNames[0]].data[0];
+
+    // The models output log(1 + price)
+    return Math.expm1(logPrice);
+}
+
+function formatPrice(price) {
+    return price.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 0
+    });
+}
+
+function addResultRow(table, label, value, isPrice) {
+    const row = table.insertRow();
+    row.insertCell().textContent = label;
+
+    const valueCell = row.insertCell();
+    valueCell.textContent = value;
+    valueCell.classList.toggle("price", isPrice);
+}
+
+function showResults(neuralNetPrice, xgboostPrice) {
+    const table = document.createElement("table");
+    const header = table.createTHead().insertRow();
+
+    ["Model", "Predicted Price"].forEach((title) => {
+        const cell = document.createElement("th");
+        cell.textContent = title;
+        header.appendChild(cell);
+    });
+
+    addResultRow(table, "Neural Network", formatPrice(neuralNetPrice), true);
+    addResultRow(table, "XGBoost", formatPrice(xgboostPrice), true);
+
+    if (activeTestCar) {
+        addResultRow(table, "Actual Listed Price", formatPrice(activeTestCar.price), false);
+    }
+
+    document.getElementById("predictions").replaceChildren(table);
 }
 
 async function runExample() {
+    const car = readCar();
+    const problem = validateCar(car);
 
-    let [minYear, maxYear] = pageData.year_range;
-    let year = document.getElementById('box3').value;
-    let mileage = document.getElementById('box4').value;
-
-    if (year === '' || year < minYear || year > maxYear) {
-        showError(`Enter a model year from ${minYear} to ${maxYear}.`);
+    if (problem) {
+        document.getElementById("predictions").replaceChildren();
+        setStatus(problem, true);
         return;
     }
-    if (mileage === '' || mileage < 0 || mileage > pageData.max_mileage) {
-        showError(`Enter a mileage from 0 to ${pageData.max_mileage}.`);
-        return;
-    }
-
-    let car = {
-        brand:        document.getElementById('box1').value,
-        model:        document.getElementById('box2').value,
-        model_year:   Number(year),
-        milage:       Number(mileage),
-        fuel_type:    document.getElementById('box5').value,
-        engine:       document.getElementById('box6').value,
-        transmission: document.getElementById('box7').value,
-        ext_col:      document.getElementById('box8').value,
-        int_col:      document.getElementById('box9').value,
-        accident:     document.getElementById('box10').value
-    };
 
     try {
-        let x = encodeCar(car);
+        const x = encodeCar(car);
+        const neuralNetPrice = await predictPrice(neuralNetSession, x);
+        const xgboostPrice = await predictPrice(xgboostSession, x);
 
-        let tensorX = new onnx.Tensor(x, 'float32', [1, x.length]);
-
-        let session = new onnx.InferenceSession();
-
-        await session.loadModel("./used_car_prices.onnx");
-        let outputMap = await session.run([tensorX]);
-        let outputData = outputMap.get('output1');
-
-        // The model outputs log(1 + price)
-        let predictedPrice = Math.expm1(outputData.data[0]);
-
-        let predictions = document.getElementById('predictions');
-
-        predictions.innerHTML = ` <hr> Got an output tensor with values: <br/>
-        <table>
-          <tr>
-            <td>  Predicted Car Price  </td>
-            <td id="td0" class="price">  ${predictedPrice.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}  </td>
-          </tr>
-        </table>`;
+        setStatus("");
+        showResults(neuralNetPrice, xgboostPrice);
     } catch (error) {
         console.error(error);
-        showError(`The prediction failed. ${error.message}`);
+        setStatus("The prediction failed. Reload the page and try again.", true);
     }
 }
 
-async function setupPage() {
+async function tryTestCar() {
+    const cars = pageData.test_cars;
+    const car = cars[Math.floor(Math.random() * cars.length)];
+
+    fields.brand.value = car.brand;
+    updateModelOptions();
+    fields.model.value = car.model;
+    updateCarOptions();
+
+    fields.model_year.value = car.model_year;
+    fields.milage.value = car.milage;
+    fields.fuel_type.value = car.fuel_type;
+    fields.engine.value = car.engine;
+    fields.transmission.value = car.transmission;
+    fields.ext_col.value = car.ext_col;
+    fields.int_col.value = car.int_col;
+    fields.accident.value = car.accident;
+
+    activeTestCar = car;
+    await runExample();
+}
+
+async function loadPage() {
     try {
-        let response = await fetch("./used_car_page_data.json");
+        if (typeof ort === "undefined") {
+            throw new Error("ONNX Runtime did not load.");
+        }
+        ort.env.wasm.numThreads = 1;
+
+        const response = await fetch(PAGE_DATA);
         if (!response.ok) {
-            throw new Error(`Could not load used_car_page_data.json (HTTP ${response.status}).`);
+            throw new Error(`Could not load ${PAGE_DATA}.`);
         }
         pageData = await response.json();
+        setupForm();
 
-        fillBox('box1', Object.keys(pageData.catalog));
-        fillBox('box8', pageData.options.ext_col);
-        fillBox('box9', pageData.options.int_col);
-        fillBox('box10', pageData.options.accident);
+        [neuralNetSession, xgboostSession] = await Promise.all([
+            ort.InferenceSession.create(NEURAL_NET_MODEL, { executionProviders: ["wasm"] }),
+            ort.InferenceSession.create(XGBOOST_MODEL, { executionProviders: ["wasm"] })
+        ]);
 
-        document.getElementById('box1').value = "Toyota";
-        updateModels();
-
-        document.getElementById('box1').addEventListener('change', updateModels);
-        document.getElementById('box2').addEventListener('change', updateCarChoices);
-        document.getElementById('predictButton').disabled = false;
+        document.getElementById("predictButton").disabled = false;
+        document.getElementById("testCarButton").disabled = false;
+        setStatus("");
     } catch (error) {
         console.error(error);
-        showError(`The page could not load. ${error.message}`);
+        setStatus("The page could not load the models. Open it from GitHub Pages or a local web server.", true);
     }
 }
 
-setupPage();
+loadPage();
